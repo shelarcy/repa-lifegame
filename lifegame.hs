@@ -20,35 +20,50 @@ initLifeGame (x,y) = do
     let seed' = fromEnum $ utctDayTime seed
     return $ R.randomishIntArray (ix2 x y) 0 1 seed'
 
-step :: BoardSize -> Board U -> Board D
-step siz board = R.traverse board id nextStatus
-    where
-    -- check around cells, count living cells, and return next own status
-    nextStatus g curIx@(Z :. x :. y) = lifeCheck (g curIx) $ sum $ map indexToStatus (getAround siz (x, y))
-        where
-            indexToStatus (x', y') =  g $ R.ix2 x' y'
+step :: (Monad m) => Board U -> m (Board U)
+step board = R.computeP
+           $ szipWith lifeCheck board
+           $ R.traverse board id sumAround
+  where
+    _ :. height :. width = extent board
 
-    getAround :: BoardSize -> BoardIx -> [BoardIx]
-    getAround (maxx, maxy) (ixx, ixy) = filter valid nineCells
-        where
-            nineCells = do
-                x <- [ixx-1 .. ixx+1]
-                y <- [ixy-1 .. ixy+1]
-                return (x,y)
-            valid (x, y)
-                | x < 0 || y < 0         = False
-                | maxx <= x || maxy <= y = False
-                | ixx == x && ixy == y   = False
-                | otherwise              = True
+    -- This INLINE exhaust simplifier ticks.
+    -- {-# INLINE sumAround #-}
+    -- check around cells, count living cells
+    sumAround get (Z :. i :. j)
+{-
+      = lifeCheck (get curIx)
+            $ outIsZero get (Z :. (i-1) :. (j-i))
+-}
+            = outIsZero get (Z :. (i-1) :. (j-i))
+            + outIsZero get (Z :. (i-1) :. j)
+            + outIsZero get (Z :. (i-1) :. (j+1))
+            + outIsZero get (Z :. i     :. (j-1))
+            + outIsZero get (Z :. i     :. (j+1))
+            + outIsZero get (Z :. (i+1) :. (j-1))
+            + outIsZero get (Z :. (i+1) :. j)
+            + outIsZero get (Z :. (i+1) :. (j+1))
 
-    lifeCheck :: CellStatus -> Int -> CellStatus
-    lifeCheck a 2 = a
-    lifeCheck _ 3 = 1
-    lifeCheck _ _ = 0
+    outIsZero get ix@(Z :. i :. j)
+      = if isInternal i j
+          then 0
+          else get ix
+
+    isInternal i j
+        =  (i <= 0) || (i >= height - 1)
+        || (j <= 0) || (j >= width  - 1)
+
+-- return next status
+lifeCheck :: CellStatus -> Int -> CellStatus
+lifeCheck a 2 = a
+lifeCheck _ 3 = 1
+lifeCheck _ _ = 0
+{-# INLINE lifeCheck #-}
 
 repeatStep :: BoardSize -> Board U -> IO ()
 repeatStep siz board = do
-    board' <- R.computeP $ step siz board  
+    -- board' <- R.computeP $ step board
+    board' <- step board
 --    threadDelay 10000
     threadDelay 120000
     putStr "\x1b[2J"
