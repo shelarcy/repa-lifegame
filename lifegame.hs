@@ -1,5 +1,15 @@
+{-# LANGUAGE CPP #-}
+-- {-# LANGUAGE QuasiQuotes #-}
+#define USE_STENCIL  0
+#define USE_CONVOLVE 0
 module Main where
 import Data.Array.Repa as R hiding (map)
+#if   USE_STENCIL
+import Data.Array.Repa.Stencil
+import Data.Array.Repa.Stencil.Dim2
+#elif USE_CONVOLVE
+import Data.Array.Repa.Algorithms.Convolve
+#endif
 import Data.Array.Repa.Algorithms.Randomish as R (randomishIntArray)
 import Control.Concurrent (threadDelay)
 import Data.Time (getCurrentTime, utctDayTime)
@@ -19,6 +29,49 @@ initLifeGame (x,y) = do
     seed <- getCurrentTime
     let seed' = fromEnum $ utctDayTime seed
     return $ R.randomishIntArray (ix2 x y) 0 1 seed'
+
+#if USE_STENCIL
+step :: (Monad m) => Board U -> m (Board U)
+step board = R.computeP
+           $ szipWith lifeCheck board
+           $ mapStencil2 (BoundConst 0) sumAround
+           $ board
+  where
+    {-# INLINE sumAround #-}
+    sumAround =
+{-
+      -- We can use QuasiQuote for generating below code.
+      [stencil2|  1 1 1
+                  1 0 1
+                  1 1 1 |]
+-}
+      -- makeStencil (Z :. 3 :. 3)
+      makeStencil2 3 3 -- this function doesn't work when stencil size > 7 x 7
+      $ \ix -> case ix of
+               Z :. -1 :. -1 -> Just 1
+               Z :. -1 :.  0 -> Just 1
+               Z :. -1 :.  1 -> Just 1
+               Z :.  0 :. -1 -> Just 1
+               Z :.  0 :.  1 -> Just 1
+               Z :.  1 :. -1 -> Just 1
+               Z :.  1 :.  0 -> Just 1
+               Z :.  1 :.  1 -> Just 1
+               _             -> Nothing
+
+#elif USE_CONVOLVE
+
+step :: (Monad m) => Board U -> m (Board U)
+step board = do
+  board' <- convolveOutP (outAs 0) sumAround board
+  computeP $ szipWith lifeCheck board board'
+  where
+    {-# INLINE sumAround #-}
+    sumAround = fromListUnboxed (Z :. 3 :. 3)
+                 [1,1,1
+                 ,1,0,1
+                 ,1,1,1]
+
+#else
 
 step :: (Monad m) => Board U -> m (Board U)
 step board = R.computeP
@@ -52,6 +105,7 @@ step board = R.computeP
     isInternal i j
         =  (i <= 0) || (i >= height - 1)
         || (j <= 0) || (j >= width  - 1)
+#endif
 
 -- return next status
 lifeCheck :: CellStatus -> Int -> CellStatus
