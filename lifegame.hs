@@ -86,9 +86,9 @@ step board = R.computeP
     sumAround get (Z :. i :. j)
 {-
       = lifeCheck (get curIx)
-            $ outIsZero get (Z :. (i-1) :. (j-i))
+            $ outIsZero get (Z :. (i-1) :. (j-1))
 -}
-            = outIsZero get (Z :. (i-1) :. (j-i))
+            = outIsZero get (Z :. (i-1) :. (j-1))
             + outIsZero get (Z :. (i-1) :. j)
             + outIsZero get (Z :. (i-1) :. (j+1))
             + outIsZero get (Z :. i     :. (j-1))
